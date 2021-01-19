@@ -13,7 +13,7 @@ using namespace std;
 #define SOL3 392.00
 #define LA3  440.00
 #define SI3  493.88
-
+#define PI  3.14159265358979323846
 #define NB_NOTES 7
 
 double NOTES[NB_NOTES] = {DO3, RE3, MI3, FA3, SOL3, LA3, SI3};
@@ -43,9 +43,9 @@ vector<double> read_signal(string filepath, int nb_channels, int sampling_freq);
 	with your signal and fill the rest with 0
 	WARNING : you must pass m, not nm !!!
 */
-int DFT(int dir,int m,double *x1,double *y1);
+int FFT(int dir, int m, double* x, double* y);
 
-vector<double> DFT_visualize(vector<double>& signal_real, vector<double>& signal_imaginary);
+vector<double> FFT_visualize(vector<double>& signal_real, vector<double>& signal_imaginary);
 
 void normalisation(double* signal, int N);
 
@@ -76,20 +76,27 @@ void add_gamme(vector<double>& signal, vector<double>& gamme, int sampling_freq)
     }
 }
 
-void filter_low_pass(vector<double>& signal, double);
 
-
+void filtre_passe_haut(double *signalReal,double *signalImaginaire, int N, double frequence, int i);
+void filtre_passe_bas(double *signalReal,double *signalImaginaire, int N, double frequence, int i);
+void filtre_passe_bande(double *signalReal,double *signalImaginaire, int N, double fc1,double fc2, int i);
+void filtre_coupe_bande(double *signalReal,double *signalImaginaire, int N, double fc1,double fc2, int i);
+void filtre_Butterworth(double *Input, double *Output, int N, double fc);
+void filtre_passe_haut_temporelle(double *Input, double *Output, int N, double fc,double K);
 int main(int argc, const char *argv[]) {
 
     cout << "Initialisation du signal...\n";
 
     double sample_time = 2; // en secondes
-    string filename = "sounds/la.wav";
-    string filename_FFT = "sounds/la_FFT.wav";
+    string filename = "sounds/La.wav";
+    string filename_FFT = "sounds/LaFFT.wav";
+    string filename_IFFT = "sounds/LaIFFT.wav";
+    string filename_Butterworth = "sounds/GammeButterworth.wav";
+    string filename_passe_haut_temporelle= "sounds/gammePasseHautTemporelle.wav";
     int sampling_freq = 44100;
     int nb_channels = 1;
 
-    vector<double> signal = read_signal("sounds/La.wav", nb_channels, sampling_freq);
+    vector<double> signal = read_signal(filename, nb_channels, sampling_freq);
 
     //add_note(signal, 0, 5, sampling_freq);
 
@@ -103,36 +110,119 @@ int main(int argc, const char *argv[]) {
 
     vector<double> signal_real(FFT_size);
     vector<double> signal_imaginary(FFT_size);
-
     copy(signal.begin(), signal.end(), signal_real.begin());
 
+    vector<double> signalButterworth(signal.size());
+    vector<double> signalPasseHautTemporelle(signal.size());
     cout << "Transformation de fourrier en cours..." << endl;
 
-    DFT(1, FFT_m, signal_real.data(), signal_imaginary.data());
+    FFT(1, FFT_m, signal_real.data(), signal_imaginary.data());
+    double max = 0;
+    vector<double> norme(signal_real.size());
+    for (size_t i = 0; i < signal_real.size(); ++i) {
+        norme[i] = sqrt(signal_real[i] * signal_real[i] + signal_imaginary[i] * signal_imaginary[i]);
+        max = max < norme[i] ? norme[i] : max;
+    }
 
-    vector<double> gamme;
+//    for (size_t i = 0; i < signal_real.size(); ++i) {
+//        signal_real[i]= (2.0 * norme[i] / max) - 1.0;
+//    }
 
-    //gamme.push_back(DO3);
-    //gamme.push_back(MI3);
-    //gamme.push_back(SOL3);
 
-    //add_gamme(signal_real, gamme, sampling_freq);
-    vector<double> visuel =DFT_visualize(signal_real,signal_imaginary);
-    write_signal(filename_FFT, signal_real, nb_channels, sampling_freq);
+//    filtre_passe_haut_temporelle(signal.data(),signalPasseHautTemporelle.data(),signal.size(),RE3,22.11);
+//    write_signal(filename_passe_haut_temporelle, signalPasseHautTemporelle, nb_channels, sampling_freq);
+//    filtre_Butterworth(signal.data(),signalButterworth.data(),signal.size(),RE3);
+//    write_signal(filename_Butterworth, signalButterworth, nb_channels, sampling_freq);
 
-    DFT(-1, FFT_m, signal_real.data(), signal_imaginary.data());
+//    filtre_passe_haut(signal_real.data(),signal_imaginary.data(), signal_real.size(), RE3, sampling_freq);
+//   filtre_passe_bas(signal_real.data(),signal_imaginary.data(), signal_real.size(), SI3*100000000, sampling_freq);
+//   filtre_passe_bande(signal_real.data(),signal_imaginary.data(), signal_real.size(), RE3,FA3, sampling_freq);
+   filtre_coupe_bande(signal_real.data(),signal_imaginary.data(), signal_real.size(), RE3,FA3, sampling_freq);
 
+        write_signal(filename_FFT, signal_real, nb_channels, sampling_freq);
+//    write_signal(filename_FFT, signal_real, nb_channels, sampling_freq);
+
+    FFT(-1, FFT_m, signal_real.data(), signal_imaginary.data());
     cout << "Ecriture du signal dans " << filename << "\n";
-
     copy(signal_real.begin(), signal_real.begin() + signal.size(), signal.begin());
-
     normalisation(signal.data(), signal.size());
-
-    write_signal(filename, , nb_channels, sampling_freq);
+    write_signal(filename_IFFT, signal, nb_channels, sampling_freq);
 
     return 0;
 }
 
+void filtre_passe_haut(double *signalReel,double *signalImaginaire, int N, double frequence, int sampling_freq) {
+    frequence = frequence*(N/sampling_freq);
+    for (int i = 0; i < N; ++i) {
+        if (i < frequence or i > N-frequence  ){
+            signalReel[i]= 0;
+            signalImaginaire[i] = 0 ;
+        }
+
+    }
+}
+
+void filtre_passe_bas(double *signalReel,double *signalImaginaire, int N, double frequence, int sampling_freq) {
+    frequence = frequence*(N/sampling_freq);
+    for (int i = 0; i < N; ++i) {
+        if (i > frequence and i < N-frequence  ){
+            signalReel[i]= 0;
+            signalImaginaire[i] = 0 ;
+        }
+
+    }
+}
+
+void filtre_passe_bande(double *signalReal,double *signalImaginaire, int N, double fc1,double fc2, int i){
+    filtre_passe_haut(signalReal,signalImaginaire,N,fc1,i);
+    filtre_passe_bas(signalReal,signalImaginaire,N,fc2,i);
+
+}
+void filtre_coupe_bande(double *signalReal,double *signalImaginaire, int N, double fc1,double fc2, int i){
+    fc1 = fc1*(N/44100);
+    fc2 = fc2*(N/44100);
+    for (int i = 0; i < N; ++i) {
+        if (i > fc1 and i<fc2 or i < N-fc1 and i>N-fc2  ){
+            signalReal[i]= 0;
+            signalImaginaire[i] = 0 ;
+        }
+
+    }
+
+}
+
+void filtre_Butterworth(double *Input, double *Output, int N, double fc){
+    double alpha = M_PI*(fc / 41100);
+    double A= 1 + alpha*(2  + 2*alpha + alpha*alpha);
+    double B= -3 + alpha*(-2  + 2*alpha + 3*alpha*alpha);
+    double C= 3 + alpha*(-2  -2*alpha + 3*alpha*alpha);
+    double D= -1 + alpha*(2 -2*alpha + alpha*alpha);
+
+    for(int i = 0; i < N; i++){
+        if(i<=2){
+            Output[i] = Input[i];
+        }
+        else {
+            Output[i] = 1/((alpha * alpha * alpha * (Input[i - 3] + 3 * Input[i - 2] + 3 * Input[i - 1] + Input[i]) -
+                         Output[i - 1] * B - Output[i - 2] * C - Output[i - 3] * D)) / A;
+        }
+    }
+
+}
+
+void filtre_passe_haut_temporelle(double *Input, double *Output, int N, double fc,double K){
+    double alpha =  M_PI*(fc / 44100);
+    double alpha_2 = alpha*alpha;
+    for(int i = 0; i < N; i++){
+        if(i<=2){
+            Output[i] = Input[i];
+        }
+        else {
+            Output[i] = Output[i-3]+Output[i-2]-Output[i-1] + (K*alpha_2*(-Input[i-3]-2*Input[i-2]+Input[i-1]+2*Input[i]))/alpha_2 ;
+//            cout<<Output[i]<<"\n";
+        }
+    }
+}
 /*
 S(t) = sin(2 * PI * freq * t)
 S(n) = S(n * tau) = sin(2 * Pi * freq * n * tau) = sin(2 * PI * freq * 1 / (freq * tau) * n
@@ -162,7 +252,15 @@ vector<unsigned char> to_data8(vector<double>& signal) {
 }
 
 
+void write_signal(string& filename, vector<double>& signal, int nb_channels, int sampling_freq) {
 
+    vector<unsigned char> data8(to_data8(signal));
+
+    Wave wave(data8.data(), data8.size(), nb_channels, sampling_freq);
+
+    // convertie en char* car la fonction write de modifie pas la constante de toute façon
+    wave.write((char*)filename.c_str());
+}
 
 vector<double> read_signal(string filepath, int nb_channels, int sampling_freq) {
 
@@ -212,7 +310,7 @@ void normalisation(double* signal, int N) {
     }
 }
 
-vector<double> DFT_visualize(vector<double>& signal_real, vector<double>& signal_imaginary) {
+vector<double> FFT_visualize(vector<double>& signal_real, vector<double>& signal_imaginary) {
 
     double max = 0;
     vector<double> norme(signal_real.size());
@@ -231,44 +329,90 @@ vector<double> DFT_visualize(vector<double>& signal_real, vector<double>& signal
     return move(norme);
 }
 
-int DFT(int dir,int m,double *x1,double *y1)
-{
-    long i,k;
-    double arg;
-    double cosarg,sinarg;
-    double *x2=NULL,*y2=NULL;
+int FFT(int dir, int m, double *x, double *y) {
 
-    x2 = static_cast<double *>(malloc(m * sizeof(double)));
-    y2 = static_cast<double *>(malloc(m * sizeof(double)));
-    if (x2 == NULL || y2 == NULL)
-        return(false);
+    int n,i,i1,j,k,i2,l,l1,l2;
+    double c1,c2,tx,ty,t1,t2,u1,u2,z;
 
-    for (i=0;i<m;i++) {
-        x2[i] = 0;
-        y2[i] = 0;
-        arg = - dir * 2.0 * 3.141592654 * (double)i / (double)m;
-        for (k=0;k<m;k++) {
-            cosarg = cos(k * arg);
-            sinarg = sin(k * arg);
-            x2[i] += (x1[k] * cosarg - y1[k] * sinarg);
-            y2[i] += (x1[k] * sinarg + y1[k] * cosarg);
+    /* Calculate the number of points */
+
+    n = 1;
+
+    for (i = 0 ; i < m ; i++)
+        n *= 2;
+
+    /* Do the bit reversal */
+
+    j = 0;
+    i2 = n >> 1;
+
+    for (i = 0 ; i < n - 1 ; i++) {
+
+        if (i < j) {
+            tx = x[i];
+            ty = y[i];
+            x[i] = x[j];
+            y[i] = y[j];
+            x[j] = tx;
+            y[j] = ty;
         }
+
+        k = i2;
+
+        while (k <= j) {
+            j -= k;
+            k >>= 1;
+        }
+
+        j += k;
     }
 
-    /* Copy the data back */
+    /* Compute the FFT */
+
+    c1 = -1.0;
+    c2 = 0.0;
+    l2 = 1;
+
+    for (l = 0 ; l < m ; l++) {
+
+        l1 = l2;
+        l2 <<= 1;
+        u1 = 1.0;
+        u2 = 0.0;
+
+        for (j = 0 ; j < l1 ; j++) {
+
+            for (i = j ; i < n ; i += l2) {
+                i1 = i + l1;
+                t1 = u1 * x[i1] - u2 * y[i1];
+                t2 = u1 * y[i1] + u2 * x[i1];
+                x[i1] = x[i] - t1;
+                y[i1] = y[i] - t2;
+                x[i] += t1;
+                y[i] += t2;
+            }
+
+            z =  u1 * c1 - u2 * c2;
+            u2 = u1 * c2 + u2 * c1;
+            u1 = z;
+        }
+
+        c2 = sqrt((1.0 - c1) / 2.0);
+
+        if (dir == 1)
+            c2 = -c2;
+
+        c1 = sqrt((1.0 + c1) / 2.0);
+    }
+
+    /* Scaling for forward transform */
+
     if (dir == 1) {
-        for (i=0;i<m;i++) {
-            x1[i] = x2[i] / (double)m;
-            y1[i] = y2[i] / (double)m;
-        }
-    } else {
-        for (i=0;i<m;i++) {
-            x1[i] = x2[i];
-            y1[i] = y2[i];
+        for (i = 0 ; i < n ; i++) {
+            x[i] /= n;
+            y[i] /= n;
         }
     }
 
-    free(x2);
-    free(y2);
-    return(true);
+    return 1;
 }
